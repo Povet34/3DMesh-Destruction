@@ -5,7 +5,10 @@ public enum SliceMethod
 {
     SinglePlane,
     VoronoiRandom,
-    VoronoiFixedSeed
+    VoronoiFixedSeed,
+    Radial,      // 방사형 (유리창, 크레이터)
+    Clustered,   // 군집형 (최적화용 덩어리 파괴)
+    Splinter     // 나뭇결 (길쭉한 파괴)
 }
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
@@ -13,30 +16,61 @@ public partial class MeshSlicer : MonoBehaviour
 {
     public SliceMethod sliceMethod = SliceMethod.SinglePlane;
 
-    // Single Plane 변수
+    // Single Plane
     public Vector3 planePosition = Vector3.zero;
     public Quaternion planeRotation = Quaternion.identity;
     public Vector2 planeSize = new Vector2(2f, 2f);
 
-    // Voronoi 공통 변수
-    [Range(2, 20)]
-    public int voronoiSeedCount = 5;
-
-    // Voronoi Fixed Seed 전용 변수
+    // Voronoi Common
+    [Range(2, 50)] public int voronoiSeedCount = 5;
     public int randomSeed = 12345;
+
+    // Radial Settings
+    public Vector3 impactPoint = Vector3.zero; // 타격점 (로컬 좌표)
+    [Range(1, 5)] public int radialRings = 3;  // 동심원 개수
+    [Range(3, 15)] public int radialRays = 5;  // 원당 쪼개지는 가닥 수
+
+    // Clustered Settings
+    [Range(2, 10)] public int clusterCount = 3;       // 큰 덩어리 개수
+    [Range(2, 10)] public int seedsPerCluster = 4;    // 덩어리당 자잘한 파편 수
+    public float clusterRadius = 0.5f;                // 자잘한 파편이 퍼지는 반경
+
+    // Splinter Settings
+    [Range(0f, 1f)] public float splinterSpread = 0.2f; // X, Z축으로 퍼지는 정도 (0에 가까울수록 얇고 뾰족해짐)
+    
+    [Header("Physics Settings")]
+    public bool addMeshCollider = true;
+    public bool addRigidbody = true;
 
     public void Slice()
     {
+        // 난수 고정 (미리보기와 결과 일치)
+        if (sliceMethod != SliceMethod.SinglePlane && sliceMethod != SliceMethod.VoronoiRandom)
+        {
+            Random.InitState(randomSeed);
+        }
+        else if (sliceMethod == SliceMethod.VoronoiRandom)
+        {
+            Random.InitState((int)System.DateTime.Now.Ticks);
+        }
+
         switch (sliceMethod)
         {
             case SliceMethod.SinglePlane:
                 SliceSinglePlane();
                 break;
             case SliceMethod.VoronoiRandom:
-                SliceVoronoiRandom();
-                break;
             case SliceMethod.VoronoiFixedSeed:
-                SliceVoronoiFixedSeed();
+                ExecuteVoronoi(GenerateUniformSeeds());
+                break;
+            case SliceMethod.Radial:
+                ExecuteVoronoi(GenerateRadialSeeds());
+                break;
+            case SliceMethod.Clustered:
+                ExecuteVoronoi(GenerateClusteredSeeds());
+                break;
+            case SliceMethod.Splinter:
+                ExecuteVoronoi(GenerateSplinterSeeds());
                 break;
         }
     }
@@ -161,7 +195,21 @@ public partial class MeshSlicer : MonoBehaviour
         MeshRenderer renderer = go.AddComponent<MeshRenderer>();
         renderer.sharedMaterial = GetComponent<MeshRenderer>().sharedMaterial;
 
-        filter.sharedMesh = data.ToMesh();
+        Mesh mesh = data.ToMesh();
+        filter.sharedMesh = mesh;
+
+        // --- 물리 컴포넌트 자동 부착 로직 추가 ---
+        if (addMeshCollider)
+        {
+            MeshCollider mc = go.AddComponent<MeshCollider>();
+            mc.sharedMesh = mesh; // 잘려진 새로운 메쉬를 콜라이더에 할당
+            mc.convex = true;     // Rigidbody와 호환되도록 반드시 Convex를 켜줌
+        }
+
+        if (addRigidbody)
+        {
+            go.AddComponent<Rigidbody>();
+        }
     }
 
     public class MeshData

@@ -135,36 +135,56 @@ public class MeshSlicerEditor : Editor
         return Vector3.Lerp(p1, p2, t);
     }
 
-    public override void OnInspectorGUI()
+public override void OnInspectorGUI()
     {
         serializedObject.Update();
 
         SerializedProperty sliceMethodProp = serializedObject.FindProperty("sliceMethod");
         EditorGUILayout.PropertyField(sliceMethodProp);
-
         SliceMethod currentMethod = (SliceMethod)sliceMethodProp.enumValueIndex;
 
         EditorGUILayout.Space();
 
-        // 선택된 모드에 따라 인스펙터에 보여줄 변수를 다르게 처리함
         if (currentMethod == SliceMethod.SinglePlane)
         {
-            EditorGUILayout.LabelField("Single Plane Settings", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("planePosition"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("planeRotation"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("planeSize"));
         }
         else
         {
-            EditorGUILayout.LabelField("Voronoi Settings", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("voronoiSeedCount"));
-            
-            // 고정 시드 모드일 때만 randomSeed 변수를 노출함
-            if (currentMethod == SliceMethod.VoronoiFixedSeed)
+            if (currentMethod != SliceMethod.VoronoiRandom)
             {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("randomSeed"));
             }
+
+            if (currentMethod == SliceMethod.VoronoiRandom || currentMethod == SliceMethod.VoronoiFixedSeed)
+            {
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("voronoiSeedCount"));
+            }
+            else if (currentMethod == SliceMethod.Radial)
+            {
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("impactPoint"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("radialRings"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("radialRays"));
+            }
+            else if (currentMethod == SliceMethod.Clustered)
+            {
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("clusterCount"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("seedsPerCluster"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("clusterRadius"));
+            }
+            else if (currentMethod == SliceMethod.Splinter)
+            {
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("voronoiSeedCount"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("splinterSpread"));
+            }
         }
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Physics Settings", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("addMeshCollider"), new GUIContent("Add Mesh Collider (Convex)"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("addRigidbody"), new GUIContent("Add Rigidbody"));
 
         serializedObject.ApplyModifiedProperties();
 
@@ -176,7 +196,6 @@ public class MeshSlicerEditor : Editor
             slicer.Slice();
         }
     }
-
     private void OnSceneGUI()
     {
         MeshSlicer slicer = (MeshSlicer)target;
@@ -185,15 +204,60 @@ public class MeshSlicerEditor : Editor
         {
             DrawSinglePlaneGUI(slicer);
         }
-        else if (slicer.sliceMethod == SliceMethod.VoronoiRandom)
+        else
         {
-            // 무작위 모드는 빨간 점(Seed)을 그리지 않음 (false 전달)
-            DrawVoronoiGUI(slicer, false);
+            DrawAdvancedVoronoiGUI(slicer);
         }
-        else if (slicer.sliceMethod == SliceMethod.VoronoiFixedSeed)
+    }
+    
+    private void DrawAdvancedVoronoiGUI(MeshSlicer slicer)
+    {
+        MeshFilter filter = slicer.GetComponent<MeshFilter>();
+        if (filter == null || filter.sharedMesh == null) return;
+
+        Bounds bounds = filter.sharedMesh.bounds;
+        Vector3 worldCenter = slicer.transform.TransformPoint(bounds.center);
+        Vector3 worldSize = Vector3.Scale(bounds.size, slicer.transform.lossyScale);
+
+        Handles.color = Color.yellow;
+        Handles.DrawWireCube(worldCenter, worldSize);
+
+        // 방사형(Radial)일 경우 타격점 조작 핸들 표시
+        if (slicer.sliceMethod == SliceMethod.Radial)
         {
-            // 고정 시드 모드는 빨간 점(Seed)을 그림 (true 전달)
-            DrawVoronoiGUI(slicer, true);
+            Vector3 worldImpact = slicer.transform.TransformPoint(slicer.impactPoint);
+            EditorGUI.BeginChangeCheck();
+            Vector3 newWorldImpact = Handles.PositionHandle(worldImpact, Quaternion.identity);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(slicer, "Move Impact Point");
+                slicer.impactPoint = slicer.transform.InverseTransformPoint(newWorldImpact);
+            }
+        }
+
+        // 시드 미리보기 (Random 모드가 아닐 때만)
+        if (slicer.sliceMethod != SliceMethod.VoronoiRandom)
+        {
+            Random.InitState(slicer.randomSeed);
+            List<Vector3> seeds = new List<Vector3>();
+
+            // enum에 맞춰 시드 생성 함수 호출
+            switch (slicer.sliceMethod)
+            {
+                case SliceMethod.VoronoiFixedSeed: seeds = slicer.GenerateUniformSeeds(); break;
+                case SliceMethod.Radial: seeds = slicer.GenerateRadialSeeds(); break;
+                case SliceMethod.Clustered: seeds = slicer.GenerateClusteredSeeds(); break;
+                case SliceMethod.Splinter: seeds = slicer.GenerateSplinterSeeds(); break;
+            }
+
+            Handles.color = Color.red;
+            float handleSize = Mathf.Max(worldSize.x, worldSize.y, worldSize.z) * 0.02f;
+
+            foreach (Vector3 seed in seeds)
+            {
+                Vector3 worldSeed = slicer.transform.TransformPoint(seed);
+                Handles.SphereHandleCap(0, worldSeed, Quaternion.identity, handleSize, EventType.Repaint);
+            }
         }
     }
 }
