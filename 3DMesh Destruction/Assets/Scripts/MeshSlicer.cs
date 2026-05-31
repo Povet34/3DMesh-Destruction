@@ -1,6 +1,16 @@
 using UnityEngine;
 using System.Collections.Generic;
 
+[System.Serializable]
+public class ChildSliceSetting
+{
+    public MeshFilter targetFilter;
+    public bool enableSlice = true;
+    [Tooltip("마스터 설정값 대비 파편 개수 비율 (1 = 100%, 0.5 = 50%)")]
+    [Range(0.1f, 5f)] 
+    public float sliceRatio = 1.0f;
+}
+
 public enum SliceMethod
 {
     SinglePlane,
@@ -14,8 +24,13 @@ public enum SliceMethod
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public partial class MeshSlicer : MonoBehaviour
 {
+    [Header("Master Settings")]
     public SliceMethod sliceMethod = SliceMethod.SinglePlane;
 
+    [Tooltip("모든 자식 메쉬의 파편 개수를 일괄 조절하는 글로벌 배율")]
+    [Range(0.1f, 5f)] 
+    public float globalSliceRatio = 1.0f;
+    
     // Single Plane
     public Vector3 planePosition = Vector3.zero;
     public Quaternion planeRotation = Quaternion.identity;
@@ -26,53 +41,70 @@ public partial class MeshSlicer : MonoBehaviour
     public int randomSeed = 12345;
 
     // Radial Settings
-    public Vector3 impactPoint = Vector3.zero; // 타격점 (로컬 좌표)
-    [Range(1, 5)] public int radialRings = 3;  // 동심원 개수
-    [Range(3, 15)] public int radialRays = 5;  // 원당 쪼개지는 가닥 수
+    public Vector3 impactPoint = Vector3.zero;
+    [Range(1, 5)] public int radialRings = 3;
+    [Range(3, 15)] public int radialRays = 5;
 
     // Clustered Settings
-    [Range(2, 10)] public int clusterCount = 3;       // 큰 덩어리 개수
-    [Range(2, 10)] public int seedsPerCluster = 4;    // 덩어리당 자잘한 파편 수
-    public float clusterRadius = 0.5f;                // 자잘한 파편이 퍼지는 반경
+    [Range(2, 10)] public int clusterCount = 3;
+    [Range(2, 10)] public int seedsPerCluster = 4;
+    public float clusterRadius = 0.5f;
 
     // Splinter Settings
-    [Range(0f, 1f)] public float splinterSpread = 0.2f; // X, Z축으로 퍼지는 정도 (0에 가까울수록 얇고 뾰족해짐)
-    
+    [Range(0f, 1f)] public float splinterSpread = 0.2f;
+
     [Header("Physics Settings")]
     public bool addMeshCollider = true;
     public bool addRigidbody = true;
 
+    // --- 새로 추가된 자식 메쉬 리스트 ---
+    [Header("Hierarchy Settings")]
+    public List<ChildSliceSetting> childSettings = new List<ChildSliceSetting>();
+
     public void Slice()
     {
-        // 난수 고정 (미리보기와 결과 일치)
         if (sliceMethod != SliceMethod.SinglePlane && sliceMethod != SliceMethod.VoronoiRandom)
-        {
             Random.InitState(randomSeed);
-        }
         else if (sliceMethod == SliceMethod.VoronoiRandom)
-        {
             Random.InitState((int)System.DateTime.Now.Ticks);
-        }
 
-        switch (sliceMethod)
+        foreach (ChildSliceSetting setting in childSettings)
         {
-            case SliceMethod.SinglePlane:
-                SliceSinglePlane();
-                break;
-            case SliceMethod.VoronoiRandom:
-            case SliceMethod.VoronoiFixedSeed:
-                ExecuteVoronoi(GenerateUniformSeeds());
-                break;
-            case SliceMethod.Radial:
-                ExecuteVoronoi(GenerateRadialSeeds());
-                break;
-            case SliceMethod.Clustered:
-                ExecuteVoronoi(GenerateClusteredSeeds());
-                break;
-            case SliceMethod.Splinter:
-                ExecuteVoronoi(GenerateSplinterSeeds());
-                break;
+            if (!setting.enableSlice || setting.targetFilter == null || setting.targetFilter.sharedMesh == null)
+                continue;
+
+            // 자식 고유의 비율과 글로벌 비율을 곱하여 최종 비율 산출
+            float finalRatio = setting.sliceRatio * globalSliceRatio;
+
+            switch (sliceMethod)
+            {
+                case SliceMethod.SinglePlane:
+                    SliceSinglePlane(setting.targetFilter);
+                    break;
+                case SliceMethod.VoronoiRandom:
+                case SliceMethod.VoronoiFixedSeed:
+                    int effectiveSeeds = Mathf.Max(2, Mathf.RoundToInt(voronoiSeedCount * finalRatio));
+                    ExecuteVoronoi(setting.targetFilter, GenerateUniformSeeds(setting.targetFilter, effectiveSeeds));
+                    break;
+                case SliceMethod.Radial:
+                    int effectiveRings = Mathf.Max(1, Mathf.RoundToInt(radialRings * finalRatio));
+                    int effectiveRays = Mathf.Max(3, Mathf.RoundToInt(radialRays * finalRatio));
+                    ExecuteVoronoi(setting.targetFilter, GenerateRadialSeeds(setting.targetFilter, effectiveRings, effectiveRays));
+                    break;
+                case SliceMethod.Clustered:
+                    int effectiveClusters = Mathf.Max(1, Mathf.RoundToInt(clusterCount * finalRatio));
+                    int effectiveSeedsPerCluster = Mathf.Max(2, Mathf.RoundToInt(seedsPerCluster * finalRatio));
+                    ExecuteVoronoi(setting.targetFilter, GenerateClusteredSeeds(setting.targetFilter, effectiveClusters, effectiveSeedsPerCluster));
+                    break;
+                case SliceMethod.Splinter:
+                    int effectiveSplinterSeeds = Mathf.Max(2, Mathf.RoundToInt(voronoiSeedCount * finalRatio));
+                    ExecuteVoronoi(setting.targetFilter, GenerateSplinterSeeds(setting.targetFilter, effectiveSplinterSeeds));
+                    break;
+            }
         }
+        
+        // 모든 자식의 파괴가 끝난 후, 최상위 원본 오브젝트 자체를 비활성화함
+        gameObject.SetActive(false);
     }
 
     // 순수하게 메쉬 데이터와 평면을 받아 두 개의 MeshData로 쪼개주는 코어 수학 함수

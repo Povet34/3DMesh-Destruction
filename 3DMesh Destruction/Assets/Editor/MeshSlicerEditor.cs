@@ -135,14 +135,19 @@ public class MeshSlicerEditor : Editor
         return Vector3.Lerp(p1, p2, t);
     }
 
-public override void OnInspectorGUI()
+    public override void OnInspectorGUI()
     {
         serializedObject.Update();
-
+        MeshSlicer slicer = (MeshSlicer)target;
+        
+        // 1. 마스터 세팅 렌더링
+        EditorGUILayout.LabelField("Master Slice Settings", EditorStyles.boldLabel);
         SerializedProperty sliceMethodProp = serializedObject.FindProperty("sliceMethod");
         EditorGUILayout.PropertyField(sliceMethodProp);
         SliceMethod currentMethod = (SliceMethod)sliceMethodProp.enumValueIndex;
-
+        // 글로벌 비율 슬라이더 노출
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("globalSliceRatio"));
+        
         EditorGUILayout.Space();
 
         if (currentMethod == SliceMethod.SinglePlane)
@@ -154,14 +159,10 @@ public override void OnInspectorGUI()
         else
         {
             if (currentMethod != SliceMethod.VoronoiRandom)
-            {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("randomSeed"));
-            }
 
             if (currentMethod == SliceMethod.VoronoiRandom || currentMethod == SliceMethod.VoronoiFixedSeed)
-            {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("voronoiSeedCount"));
-            }
             else if (currentMethod == SliceMethod.Radial)
             {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("impactPoint"));
@@ -183,16 +184,34 @@ public override void OnInspectorGUI()
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Physics Settings", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("addMeshCollider"), new GUIContent("Add Mesh Collider (Convex)"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("addMeshCollider"), new GUIContent("Add Box Collider"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("addRigidbody"), new GUIContent("Add Rigidbody"));
+
+        // 2. 하이라키(자식 메쉬) 세팅 렌더링
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Hierarchy Settings", EditorStyles.boldLabel);
+        
+        if (GUILayout.Button("Find All Child Meshes", GUILayout.Height(30)))
+        {
+            Undo.RecordObject(slicer, "Find Child Meshes");
+            slicer.childSettings.Clear();
+            
+            // 자신을 포함한 모든 자식의 MeshFilter를 찾음
+            MeshFilter[] filters = slicer.GetComponentsInChildren<MeshFilter>();
+            foreach (MeshFilter f in filters)
+            {
+                slicer.childSettings.Add(new ChildSliceSetting { targetFilter = f, enableSlice = true, sliceRatio = 1.0f });
+            }
+        }
+
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("childSettings"), true);
 
         serializedObject.ApplyModifiedProperties();
 
         GUILayout.Space(15);
-        if (GUILayout.Button("Slice Object", GUILayout.Height(40)))
+        if (GUILayout.Button("Slice All Objects", GUILayout.Height(40)))
         {
-            MeshSlicer slicer = (MeshSlicer)target;
-            Undo.RecordObject(slicer.gameObject, "Slice Object");
+            Undo.RecordObject(slicer.gameObject, "Slice All Objects");
             slicer.Slice();
         }
     }
@@ -211,43 +230,68 @@ public override void OnInspectorGUI()
     }
     
     private void DrawAdvancedVoronoiGUI(MeshSlicer slicer)
+{
+    if (slicer.sliceMethod == SliceMethod.Radial)
     {
-        MeshFilter filter = slicer.GetComponent<MeshFilter>();
-        if (filter == null || filter.sharedMesh == null) return;
+        Vector3 worldImpact = slicer.transform.TransformPoint(slicer.impactPoint);
+        EditorGUI.BeginChangeCheck();
+        Vector3 newWorldImpact = Handles.PositionHandle(worldImpact, Quaternion.identity);
+        if (EditorGUI.EndChangeCheck())
+        {
+            Undo.RecordObject(slicer, "Move Impact Point");
+            slicer.impactPoint = slicer.transform.InverseTransformPoint(newWorldImpact);
+        }
+    }
 
-        Bounds bounds = filter.sharedMesh.bounds;
-        Vector3 worldCenter = slicer.transform.TransformPoint(bounds.center);
-        Vector3 worldSize = Vector3.Scale(bounds.size, slicer.transform.lossyScale);
+    if (slicer.childSettings == null || slicer.childSettings.Count == 0) return;
+
+    bool showSeeds = slicer.sliceMethod != SliceMethod.VoronoiRandom;
+    if (showSeeds)
+    {
+        Random.InitState(slicer.randomSeed);
+    }
+
+    foreach (ChildSliceSetting setting in slicer.childSettings)
+    {
+        if (!setting.enableSlice || setting.targetFilter == null || setting.targetFilter.sharedMesh == null)
+            continue;
+
+        Transform childT = setting.targetFilter.transform;
+        Bounds bounds = setting.targetFilter.sharedMesh.bounds;
+        
+        Vector3 worldCenter = childT.TransformPoint(bounds.center);
+        Vector3 worldSize = Vector3.Scale(bounds.size, childT.lossyScale);
 
         Handles.color = Color.yellow;
         Handles.DrawWireCube(worldCenter, worldSize);
 
-        // 방사형(Radial)일 경우 타격점 조작 핸들 표시
-        if (slicer.sliceMethod == SliceMethod.Radial)
+        if (showSeeds)
         {
-            Vector3 worldImpact = slicer.transform.TransformPoint(slicer.impactPoint);
-            EditorGUI.BeginChangeCheck();
-            Vector3 newWorldImpact = Handles.PositionHandle(worldImpact, Quaternion.identity);
-            if (EditorGUI.EndChangeCheck())
-            {
-                Undo.RecordObject(slicer, "Move Impact Point");
-                slicer.impactPoint = slicer.transform.InverseTransformPoint(newWorldImpact);
-            }
-        }
-
-        // 시드 미리보기 (Random 모드가 아닐 때만)
-        if (slicer.sliceMethod != SliceMethod.VoronoiRandom)
-        {
-            Random.InitState(slicer.randomSeed);
             List<Vector3> seeds = new List<Vector3>();
+            
+            // 씬 뷰 미리보기에도 글로벌 비율을 곱하여 실시간으로 점 개수가 변하도록 연동
+            float finalRatio = setting.sliceRatio * slicer.globalSliceRatio;
 
-            // enum에 맞춰 시드 생성 함수 호출
             switch (slicer.sliceMethod)
             {
-                case SliceMethod.VoronoiFixedSeed: seeds = slicer.GenerateUniformSeeds(); break;
-                case SliceMethod.Radial: seeds = slicer.GenerateRadialSeeds(); break;
-                case SliceMethod.Clustered: seeds = slicer.GenerateClusteredSeeds(); break;
-                case SliceMethod.Splinter: seeds = slicer.GenerateSplinterSeeds(); break;
+                case SliceMethod.VoronoiFixedSeed:
+                    int effectiveSeeds = Mathf.Max(2, Mathf.RoundToInt(slicer.voronoiSeedCount * finalRatio));
+                    seeds = slicer.GenerateUniformSeeds(setting.targetFilter, effectiveSeeds);
+                    break;
+                case SliceMethod.Radial:
+                    int effectiveRings = Mathf.Max(1, Mathf.RoundToInt(slicer.radialRings * finalRatio));
+                    int effectiveRays = Mathf.Max(3, Mathf.RoundToInt(slicer.radialRays * finalRatio));
+                    seeds = slicer.GenerateRadialSeeds(setting.targetFilter, effectiveRings, effectiveRays);
+                    break;
+                case SliceMethod.Clustered:
+                    int effectiveClusters = Mathf.Max(1, Mathf.RoundToInt(slicer.clusterCount * finalRatio));
+                    int effectiveSeedsPerCluster = Mathf.Max(2, Mathf.RoundToInt(slicer.seedsPerCluster * finalRatio));
+                    seeds = slicer.GenerateClusteredSeeds(setting.targetFilter, effectiveClusters, effectiveSeedsPerCluster);
+                    break;
+                case SliceMethod.Splinter:
+                    int effectiveSplinterSeeds = Mathf.Max(2, Mathf.RoundToInt(slicer.voronoiSeedCount * finalRatio));
+                    seeds = slicer.GenerateSplinterSeeds(setting.targetFilter, effectiveSplinterSeeds);
+                    break;
             }
 
             Handles.color = Color.red;
@@ -255,9 +299,10 @@ public override void OnInspectorGUI()
 
             foreach (Vector3 seed in seeds)
             {
-                Vector3 worldSeed = slicer.transform.TransformPoint(seed);
+                Vector3 worldSeed = childT.TransformPoint(seed);
                 Handles.SphereHandleCap(0, worldSeed, Quaternion.identity, handleSize, EventType.Repaint);
             }
         }
     }
+}
 }
