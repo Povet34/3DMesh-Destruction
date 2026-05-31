@@ -872,7 +872,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1978907248868392, guid: 2c4daa6156d4958468b11564deb735b6, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4573813148344192, guid: 2c4daa6156d4958468b11564deb735b6, type: 3}
       propertyPath: m_LocalPosition.x
@@ -950,7 +950,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MeshSlicer
   sliceMethod: 2
   globalSliceRatio: 0.66
-  colliderType: 3
+  colliderType: 1
   colliderScale: 0.8
   addMeshCollider: 1
   addRigidbody: 1
