@@ -9,7 +9,20 @@ public class MeshSlicerEditor : Editor
     {
         MeshSlicer slicer = (MeshSlicer)target;
 
-        // 1. 핸들 조작 로직 (기존과 동일)
+        // enum 상태에 따라 씬 뷰 GUI를 다르게 그림
+        if (slicer.sliceMethod == SliceMethod.SinglePlane)
+        {
+            DrawSinglePlaneGUI(slicer);
+        }
+        else if (slicer.sliceMethod == SliceMethod.Voronoi)
+        {
+            DrawVoronoiGUI(slicer);
+        }
+    }
+
+    private void DrawSinglePlaneGUI(MeshSlicer slicer)
+    {
+        // 1. 핸들 조작 로직
         Vector3 worldPos = slicer.transform.TransformPoint(slicer.planePosition);
         Quaternion worldRot = slicer.transform.rotation * slicer.planeRotation;
 
@@ -36,8 +49,31 @@ public class MeshSlicerEditor : Editor
         planeCorners[3] = worldPos + halfSizeX - halfSizeZ;
         Handles.DrawSolidRectangleWithOutline(planeCorners, new Color(1f, 0f, 0f, 0.1f), Color.clear);
 
-        // 3. 초록색 절취선(Intersection Line) 그리기 로직 추가
+        // 3. 초록색 절취선 그리기
         DrawIntersectionLines(slicer);
+    }
+
+    private void DrawVoronoiGUI(MeshSlicer slicer)
+    {
+        MeshFilter filter = slicer.GetComponent<MeshFilter>();
+        if (filter == null || filter.sharedMesh == null) return;
+
+        // 보로노이 시드가 생성될 바운딩 박스 영역을 노란색 와이어프레임으로 표시
+        Handles.color = Color.yellow;
+        Bounds bounds = filter.sharedMesh.bounds;
+        
+        // 로컬 바운딩 박스를 월드 스페이스 기준으로 변환
+        Vector3 worldCenter = slicer.transform.TransformPoint(bounds.center);
+        Vector3 worldSize = Vector3.Scale(bounds.size, slicer.transform.lossyScale);
+
+        Handles.DrawWireCube(worldCenter, worldSize);
+
+        // 씬 뷰에 텍스트 라벨 띄우기
+        GUIStyle labelStyle = new GUIStyle();
+        labelStyle.normal.textColor = Color.yellow;
+        labelStyle.alignment = TextAnchor.MiddleCenter;
+        
+        Handles.Label(worldCenter + Vector3.up * (worldSize.y * 0.5f + 0.2f), $"Voronoi Bounds\nSeeds: {slicer.voronoiSeedCount}", labelStyle);
     }
 
     private void DrawIntersectionLines(MeshSlicer slicer)
@@ -49,59 +85,46 @@ public class MeshSlicerEditor : Editor
         Vector3[] verts = mesh.vertices;
         int[] tris = mesh.triangles;
 
-        // 로컬 스페이스 기준의 평면 정의
         Vector3 localPlaneNormal = slicer.planeRotation * Vector3.up;
         Plane localPlane = new Plane(localPlaneNormal, slicer.planePosition);
 
         Handles.color = Color.green;
 
-        // 모든 삼각형을 순회하며 평면과의 교차점 계산
         for (int i = 0; i < tris.Length; i += 3)
         {
             Vector3 v1 = verts[tris[i]];
             Vector3 v2 = verts[tris[i + 1]];
             Vector3 v3 = verts[tris[i + 2]];
 
-            // 각 버텍스에서 평면까지의 부호 있는 거리(Signed Distance) 계산
             float d1 = localPlane.GetDistanceToPoint(v1);
             float d2 = localPlane.GetDistanceToPoint(v2);
             float d3 = localPlane.GetDistanceToPoint(v3);
 
-            // 세 점이 모두 평면의 같은 쪽에 있다면 교차하지 않는 것임
             if ((d1 > 0 && d2 > 0 && d3 > 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0))
                 continue;
 
             List<Vector3> intersectPoints = new List<Vector3>();
 
-            // 선분 v1-v2 교차 확인
             if (Mathf.Sign(d1) != Mathf.Sign(d2)) 
                 intersectPoints.Add(GetIntersectionPoint(v1, v2, d1, d2));
             
-            // 선분 v2-v3 교차 확인
             if (Mathf.Sign(d2) != Mathf.Sign(d3)) 
                 intersectPoints.Add(GetIntersectionPoint(v2, v3, d2, d3));
             
-            // 선분 v3-v1 교차 확인
             if (Mathf.Sign(d3) != Mathf.Sign(d1)) 
                 intersectPoints.Add(GetIntersectionPoint(v3, v1, d3, d1));
 
-            // 교차점이 2개 나왔다면, 그 두 점을 잇는 선을 그림
             if (intersectPoints.Count == 2)
             {
-                // 로컬 좌표를 월드 좌표로 변환하여 씬 뷰에 그림
                 Vector3 worldPt1 = slicer.transform.TransformPoint(intersectPoints[0]);
                 Vector3 worldPt2 = slicer.transform.TransformPoint(intersectPoints[1]);
-                
-                // 선 굵기를 3f로 주어 눈에 잘 띄게 만듦
                 Handles.DrawLine(worldPt1, worldPt2, 3f);
             }
         }
     }
 
-    // 두 버텍스 사이에서 평면과 정확히 교차하는 지점을 선형 보간(Lerp)으로 찾는 수학 함수
     private Vector3 GetIntersectionPoint(Vector3 p1, Vector3 p2, float d1, float d2)
     {
-        // 거리의 비율을 계산하여 t값(0~1)을 구함
         float t = d1 / (d1 - d2);
         return Vector3.Lerp(p1, p2, t);
     }

@@ -1,29 +1,53 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-[RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
-public class MeshSlicer : MonoBehaviour
+public enum SliceMethod
 {
+    SinglePlane,
+    Voronoi
+}
+
+[RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
+public partial class MeshSlicer : MonoBehaviour
+{
+    [Header("Slice Settings")]
+    public SliceMethod sliceMethod = SliceMethod.SinglePlane;
+
+    [Header("Single Plane Settings")]
     public Vector3 planePosition = Vector3.zero;
     public Quaternion planeRotation = Quaternion.identity;
     public Vector2 planeSize = new Vector2(2f, 2f);
 
+    [Header("Voronoi Settings")]
+    [Range(2, 20)]
+    public int voronoiSeedCount = 5; // 파편 개수
+
     public void Slice()
     {
-        MeshFilter filter = GetComponent<MeshFilter>();
-        if (filter.sharedMesh == null) return;
+        switch (sliceMethod)
+        {
+            case SliceMethod.SinglePlane:
+                SliceSinglePlane();
+                break;
+            case SliceMethod.Voronoi:
+                SliceVoronoi();
+                break;
+        }
+    }
 
-        Vector3 localNormal = planeRotation * Vector3.up;
-        Plane plane = new Plane(localNormal, planePosition);
-
-        MeshData positiveMesh = new MeshData();
-        MeshData negativeMesh = new MeshData();
+    // 순수하게 메쉬 데이터와 평면을 받아 두 개의 MeshData로 쪼개주는 코어 수학 함수
+    public bool PerformSlice(Mesh targetMesh, Plane plane, out MeshData positiveMesh, out MeshData negativeMesh)
+    {
+        positiveMesh = new MeshData();
+        negativeMesh = new MeshData();
         List<Vector3> capVertices = new List<Vector3>();
 
-        Vector3[] verts = filter.sharedMesh.vertices;
-        Vector3[] norms = filter.sharedMesh.normals;
-        Vector2[] uvs = filter.sharedMesh.uv;
-        int[] tris = filter.sharedMesh.triangles;
+        Vector3[] verts = targetMesh.vertices;
+        Vector3[] norms = targetMesh.normals;
+        Vector2[] uvs = targetMesh.uv;
+        int[] tris = targetMesh.triangles;
+
+        bool hasIntersection = false;
 
         for (int i = 0; i < tris.Length; i += 3)
         {
@@ -38,41 +62,35 @@ public class MeshSlicer : MonoBehaviour
 
             if (side1 == side2 && side2 == side3)
             {
-                // 잘리지 않은 온전한 삼각형
                 (side1 ? positiveMesh : negativeMesh).AddTriangle(v1, v2, v3, n1, n2, n3, uv1, uv2, uv3);
             }
             else
             {
-                // 평면을 관통하여 잘리는 삼각형
+                hasIntersection = true;
                 Vector3 aloneV, pairV1, pairV2;
                 Vector2 aloneUV, pairUV1, pairUV2;
                 Vector3 aloneN, pairN1, pairN2;
                 bool aloneSide;
 
-                // 혼자 다른 쪽에 있는 꼭짓점 찾기
                 if (side1 != side2 && side1 != side3)
                 {
                     aloneV = v1; pairV1 = v2; pairV2 = v3;
                     aloneUV = uv1; pairUV1 = uv2; pairUV2 = uv3;
-                    aloneN = n1; pairN1 = n2; pairN2 = n3;
-                    aloneSide = side1;
+                    aloneN = n1; pairN1 = n2; pairN2 = n3; aloneSide = side1;
                 }
                 else if (side2 != side1 && side2 != side3)
                 {
                     aloneV = v2; pairV1 = v3; pairV2 = v1;
                     aloneUV = uv2; pairUV1 = uv3; pairUV2 = uv1;
-                    aloneN = n2; pairN1 = n3; pairN2 = n1;
-                    aloneSide = side2;
+                    aloneN = n2; pairN1 = n3; pairN2 = n1; aloneSide = side2;
                 }
                 else
                 {
                     aloneV = v3; pairV1 = v1; pairV2 = v2;
                     aloneUV = uv3; pairUV1 = uv1; pairUV2 = uv2;
-                    aloneN = n3; pairN1 = n1; pairN2 = n2;
-                    aloneSide = side3;
+                    aloneN = n3; pairN1 = n1; pairN2 = n2; aloneSide = side3;
                 }
 
-                // 교차점 계산 (Lerp)
                 float dAlone = plane.GetDistanceToPoint(aloneV);
                 float dPair1 = plane.GetDistanceToPoint(pairV1);
                 float dPair2 = plane.GetDistanceToPoint(pairV2);
@@ -82,10 +100,8 @@ public class MeshSlicer : MonoBehaviour
 
                 Vector3 intersect1 = Vector3.Lerp(aloneV, pairV1, t1);
                 Vector3 intersect2 = Vector3.Lerp(aloneV, pairV2, t2);
-
                 Vector2 intersectUV1 = Vector2.Lerp(aloneUV, pairUV1, t1);
                 Vector2 intersectUV2 = Vector2.Lerp(aloneUV, pairUV2, t2);
-
                 Vector3 intersectN1 = Vector3.Lerp(aloneN, pairN1, t1);
                 Vector3 intersectN2 = Vector3.Lerp(aloneN, pairN2, t2);
 
@@ -95,52 +111,41 @@ public class MeshSlicer : MonoBehaviour
                 MeshData aloneMesh = aloneSide ? positiveMesh : negativeMesh;
                 MeshData pairMesh = aloneSide ? negativeMesh : positiveMesh;
 
-                // 혼자 있는 쪽의 작은 삼각형 1개
                 aloneMesh.AddTriangle(aloneV, intersect1, intersect2, aloneN, intersectN1, intersectN2, aloneUV, intersectUV1, intersectUV2);
-
-                // 쌍으로 있는 쪽의 사각형을 삼각형 2개로 분할
                 pairMesh.AddTriangle(intersect1, pairV1, pairV2, intersectN1, pairN1, pairN2, intersectUV1, pairUV1, pairUV2);
                 pairMesh.AddTriangle(intersect1, pairV2, intersect2, intersectN1, pairN2, intersectN2, intersectUV1, pairUV2, intersectUV2);
             }
         }
 
-        // 단면 메꾸기 (Capping)
-        if (capVertices.Count > 0)
+        if (hasIntersection && capVertices.Count > 0)
         {
             Vector3 center = Vector3.zero;
             foreach (Vector3 v in capVertices) center += v;
             center /= capVertices.Count;
 
-            // 볼록 다면체(Convex) 기준 단순 부채꼴 삼각분할
             for (int i = 0; i < capVertices.Count; i += 2)
             {
                 Vector3 v1 = capVertices[i];
                 Vector3 v2 = capVertices[i + 1];
 
-                // 노멀 방향을 맞춰주기 위한 외적 계산
                 Vector3 cross = Vector3.Cross(v1 - center, v2 - center);
-                if (Vector3.Dot(cross, localNormal) < 0)
+                if (Vector3.Dot(cross, plane.normal) < 0)
                 {
                     Vector3 temp = v1; v1 = v2; v2 = temp;
                 }
 
-                // // 단면의 UV는 임시로 0,0 처리 (추후 버텍스 컬러로 색상 제어 가능)
-                // positiveMesh.AddTriangle(center, v1, v2, -localNormal, -localNormal, -localNormal, Vector2.zero, Vector2.zero, Vector2.zero);
-                // negativeMesh.AddTriangle(center, v2, v1, localNormal, localNormal, localNormal, Vector2.zero, Vector2.zero, Vector2.zero);
-                
-                //와인딩 오더 오류로 반대로 그리겠음.
-                positiveMesh.AddTriangle(center, v2, v1, -localNormal, -localNormal, -localNormal, Vector2.zero, Vector2.zero, Vector2.zero);
-                negativeMesh.AddTriangle(center, v1, v2, localNormal, localNormal, localNormal, Vector2.zero, Vector2.zero, Vector2.zero);
+                positiveMesh.AddTriangle(center, v2, v1, -plane.normal, -plane.normal, -plane.normal, Vector2.zero, Vector2.zero, Vector2.zero);
+                negativeMesh.AddTriangle(center, v1, v2, plane.normal, plane.normal, plane.normal, Vector2.zero, Vector2.zero, Vector2.zero);
             }
         }
 
-        CreateSlicedObject(gameObject.name + "_Positive", positiveMesh);
-        CreateSlicedObject(gameObject.name + "_Negative", negativeMesh);
-        gameObject.SetActive(false);
+        return hasIntersection;
     }
 
-    private void CreateSlicedObject(string name, MeshData data)
+    public void CreateSlicedObject(string name, MeshData data)
     {
+        if (data.vertices.Count == 0) return;
+
         GameObject go = new GameObject(name);
         go.transform.position = transform.position;
         go.transform.rotation = transform.rotation;
@@ -150,14 +155,7 @@ public class MeshSlicer : MonoBehaviour
         MeshRenderer renderer = go.AddComponent<MeshRenderer>();
         renderer.sharedMaterial = GetComponent<MeshRenderer>().sharedMaterial;
 
-        Mesh mesh = new Mesh();
-        mesh.vertices = data.vertices.ToArray();
-        mesh.triangles = data.triangles.ToArray();
-        mesh.normals = data.normals.ToArray();
-        mesh.uv = data.uvs.ToArray();
-        
-        mesh.RecalculateBounds();
-        filter.sharedMesh = mesh;
+        filter.sharedMesh = data.ToMesh();
     }
 
     public class MeshData
@@ -174,6 +172,18 @@ public class MeshSlicer : MonoBehaviour
             normals.AddRange(new[] { n1, n2, n3 });
             uvs.AddRange(new[] { uv1, uv2, uv3 });
             triangles.AddRange(new[] { index, index + 1, index + 2 });
+        }
+
+        // 메모리 상에서 반복 연산을 하기 위해 MeshData를 Mesh로 변환하는 헬퍼 함수
+        public Mesh ToMesh()
+        {
+            Mesh mesh = new Mesh();
+            mesh.vertices = vertices.ToArray();
+            mesh.triangles = triangles.ToArray();
+            mesh.normals = normals.ToArray();
+            mesh.uv = uvs.ToArray();
+            mesh.RecalculateBounds();
+            return mesh;
         }
     }
 }
