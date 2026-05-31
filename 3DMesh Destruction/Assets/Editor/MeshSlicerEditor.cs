@@ -5,21 +5,6 @@ using System.Collections.Generic;
 [CustomEditor(typeof(MeshSlicer))]
 public class MeshSlicerEditor : Editor
 {
-    private void OnSceneGUI()
-    {
-        MeshSlicer slicer = (MeshSlicer)target;
-
-        // enum 상태에 따라 씬 뷰 GUI를 다르게 그림
-        if (slicer.sliceMethod == SliceMethod.SinglePlane)
-        {
-            DrawSinglePlaneGUI(slicer);
-        }
-        else if (slicer.sliceMethod == SliceMethod.Voronoi)
-        {
-            DrawVoronoiGUI(slicer);
-        }
-    }
-
     private void DrawSinglePlaneGUI(MeshSlicer slicer)
     {
         // 1. 핸들 조작 로직
@@ -53,27 +38,48 @@ public class MeshSlicerEditor : Editor
         DrawIntersectionLines(slicer);
     }
 
-    private void DrawVoronoiGUI(MeshSlicer slicer)
+    private void DrawVoronoiGUI(MeshSlicer slicer, bool showSeeds)
     {
         MeshFilter filter = slicer.GetComponent<MeshFilter>();
         if (filter == null || filter.sharedMesh == null) return;
 
-        // 보로노이 시드가 생성될 바운딩 박스 영역을 노란색 와이어프레임으로 표시
-        Handles.color = Color.yellow;
         Bounds bounds = filter.sharedMesh.bounds;
-        
-        // 로컬 바운딩 박스를 월드 스페이스 기준으로 변환
         Vector3 worldCenter = slicer.transform.TransformPoint(bounds.center);
         Vector3 worldSize = Vector3.Scale(bounds.size, slicer.transform.lossyScale);
 
+        Handles.color = Color.yellow;
         Handles.DrawWireCube(worldCenter, worldSize);
 
-        // 씬 뷰에 텍스트 라벨 띄우기
+        string labelText = $"Voronoi Bounds\nSeeds: {slicer.voronoiSeedCount}";
+
+        // showSeeds가 true일 때만 빨간 점을 계산하고 그림
+        if (showSeeds)
+        {
+            Random.InitState(slicer.randomSeed);
+            Handles.color = Color.red;
+            float handleSize = Mathf.Max(worldSize.x, worldSize.y, worldSize.z) * 0.02f;
+
+            for (int i = 0; i < slicer.voronoiSeedCount; i++)
+            {
+                Vector3 localSeed = new Vector3(
+                    Random.Range(bounds.min.x, bounds.max.x),
+                    Random.Range(bounds.min.y, bounds.max.y),
+                    Random.Range(bounds.min.z, bounds.max.z)
+                );
+                Vector3 worldSeed = slicer.transform.TransformPoint(localSeed);
+                Handles.SphereHandleCap(0, worldSeed, Quaternion.identity, handleSize, EventType.Repaint);
+            }
+            labelText += $"\nFixed Seed: {slicer.randomSeed}";
+        }
+        else
+        {
+            labelText += "\nMode: Random (Seeds Hidden)";
+        }
+
         GUIStyle labelStyle = new GUIStyle();
         labelStyle.normal.textColor = Color.yellow;
         labelStyle.alignment = TextAnchor.MiddleCenter;
-        
-        Handles.Label(worldCenter + Vector3.up * (worldSize.y * 0.5f + 0.2f), $"Voronoi Bounds\nSeeds: {slicer.voronoiSeedCount}", labelStyle);
+        Handles.Label(worldCenter + Vector3.up * (worldSize.y * 0.5f + 0.2f), labelText, labelStyle);
     }
 
     private void DrawIntersectionLines(MeshSlicer slicer)
@@ -131,14 +137,63 @@ public class MeshSlicerEditor : Editor
 
     public override void OnInspectorGUI()
     {
-        DrawDefaultInspector();
-        MeshSlicer slicer = (MeshSlicer)target;
+        serializedObject.Update();
 
-        GUILayout.Space(10);
+        SerializedProperty sliceMethodProp = serializedObject.FindProperty("sliceMethod");
+        EditorGUILayout.PropertyField(sliceMethodProp);
+
+        SliceMethod currentMethod = (SliceMethod)sliceMethodProp.enumValueIndex;
+
+        EditorGUILayout.Space();
+
+        // 선택된 모드에 따라 인스펙터에 보여줄 변수를 다르게 처리함
+        if (currentMethod == SliceMethod.SinglePlane)
+        {
+            EditorGUILayout.LabelField("Single Plane Settings", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("planePosition"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("planeRotation"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("planeSize"));
+        }
+        else
+        {
+            EditorGUILayout.LabelField("Voronoi Settings", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("voronoiSeedCount"));
+            
+            // 고정 시드 모드일 때만 randomSeed 변수를 노출함
+            if (currentMethod == SliceMethod.VoronoiFixedSeed)
+            {
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("randomSeed"));
+            }
+        }
+
+        serializedObject.ApplyModifiedProperties();
+
+        GUILayout.Space(15);
         if (GUILayout.Button("Slice Object", GUILayout.Height(40)))
         {
+            MeshSlicer slicer = (MeshSlicer)target;
             Undo.RecordObject(slicer.gameObject, "Slice Object");
             slicer.Slice();
+        }
+    }
+
+    private void OnSceneGUI()
+    {
+        MeshSlicer slicer = (MeshSlicer)target;
+
+        if (slicer.sliceMethod == SliceMethod.SinglePlane)
+        {
+            DrawSinglePlaneGUI(slicer);
+        }
+        else if (slicer.sliceMethod == SliceMethod.VoronoiRandom)
+        {
+            // 무작위 모드는 빨간 점(Seed)을 그리지 않음 (false 전달)
+            DrawVoronoiGUI(slicer, false);
+        }
+        else if (slicer.sliceMethod == SliceMethod.VoronoiFixedSeed)
+        {
+            // 고정 시드 모드는 빨간 점(Seed)을 그림 (true 전달)
+            DrawVoronoiGUI(slicer, true);
         }
     }
 }

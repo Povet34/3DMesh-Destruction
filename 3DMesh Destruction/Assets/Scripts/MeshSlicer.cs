@@ -4,23 +4,26 @@ using System.Collections.Generic;
 public enum SliceMethod
 {
     SinglePlane,
-    Voronoi
+    VoronoiRandom,
+    VoronoiFixedSeed
 }
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public partial class MeshSlicer : MonoBehaviour
 {
-    [Header("Slice Settings")]
     public SliceMethod sliceMethod = SliceMethod.SinglePlane;
 
-    [Header("Single Plane Settings")]
+    // Single Plane 변수
     public Vector3 planePosition = Vector3.zero;
     public Quaternion planeRotation = Quaternion.identity;
     public Vector2 planeSize = new Vector2(2f, 2f);
 
-    [Header("Voronoi Settings")]
+    // Voronoi 공통 변수
     [Range(2, 20)]
-    public int voronoiSeedCount = 5; // 파편 개수
+    public int voronoiSeedCount = 5;
+
+    // Voronoi Fixed Seed 전용 변수
+    public int randomSeed = 12345;
 
     public void Slice()
     {
@@ -29,8 +32,11 @@ public partial class MeshSlicer : MonoBehaviour
             case SliceMethod.SinglePlane:
                 SliceSinglePlane();
                 break;
-            case SliceMethod.Voronoi:
-                SliceVoronoi();
+            case SliceMethod.VoronoiRandom:
+                SliceVoronoiRandom();
+                break;
+            case SliceMethod.VoronoiFixedSeed:
+                SliceVoronoiFixedSeed();
                 break;
         }
     }

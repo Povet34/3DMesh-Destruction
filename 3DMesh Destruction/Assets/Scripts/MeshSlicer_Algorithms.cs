@@ -1,10 +1,11 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-public partial class MeshSlicer
+public partial class MeshSlicer : MonoBehaviour
 {
     private void SliceSinglePlane()
     {
+        // (이전 SinglePlane 로직과 동일)
         MeshFilter filter = GetComponent<MeshFilter>();
         if (filter.sharedMesh == null) return;
 
@@ -17,13 +18,24 @@ public partial class MeshSlicer
             CreateSlicedObject(gameObject.name + "_Negative", negData);
             gameObject.SetActive(false);
         }
-        else
-        {
-            Debug.LogWarning("평면이 메쉬를 관통하지 않습니다.");
-        }
     }
 
-    private void SliceVoronoi()
+    private void SliceVoronoiRandom()
+    {
+        // 현재 시간을 기반으로 완벽한 무작위 시드 생성
+        Random.InitState((int)System.DateTime.Now.Ticks);
+        ExecuteVoronoi();
+    }
+
+    private void SliceVoronoiFixedSeed()
+    {
+        // 사용자가 입력한 고정 시드 적용
+        Random.InitState(randomSeed);
+        ExecuteVoronoi();
+    }
+
+    // 보로노이 파괴 공통 코어 로직
+    private void ExecuteVoronoi()
     {
         MeshFilter filter = GetComponent<MeshFilter>();
         if (filter.sharedMesh == null) return;
@@ -31,7 +43,6 @@ public partial class MeshSlicer
         Bounds bounds = filter.sharedMesh.bounds;
         List<Vector3> seeds = new List<Vector3>();
 
-        // 1. 바운딩 박스 내부에 무작위 시드(Seed) 생성
         for (int i = 0; i < voronoiSeedCount; i++)
         {
             seeds.Add(new Vector3(
@@ -43,7 +54,6 @@ public partial class MeshSlicer
 
         List<Mesh> finalChunks = new List<Mesh>();
 
-        // 2. 각 시드별로 보로노이 셀(Cell) 깎아내기
         for (int i = 0; i < seeds.Count; i++)
         {
             Mesh currentChunk = filter.sharedMesh;
@@ -56,15 +66,11 @@ public partial class MeshSlicer
 
                 Vector3 otherSeed = seeds[j];
                 Vector3 midPoint = (currentSeed + otherSeed) * 0.5f;
-                
-                // currentSeed에서 otherSeed를 향하는 방향이 노멀
                 Vector3 normal = (otherSeed - currentSeed).normalized;
                 Plane slicePlane = new Plane(normal, midPoint);
 
-                // 메쉬를 자름
                 if (PerformSlice(currentChunk, slicePlane, out MeshData posData, out MeshData negData))
                 {
-                    // normal이 otherSeed를 향하므로, currentSeed는 평면의 반대쪽(Negative)에 남음
                     if (negData.vertices.Count > 0)
                     {
                         currentChunk = negData.ToMesh();
@@ -83,7 +89,6 @@ public partial class MeshSlicer
             }
         }
 
-        // 3. 깎여나간 최종 파편들을 씬에 생성
         for (int i = 0; i < finalChunks.Count; i++)
         {
             MeshData data = new MeshData();
