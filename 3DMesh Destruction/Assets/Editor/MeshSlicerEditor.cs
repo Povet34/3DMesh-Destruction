@@ -184,8 +184,20 @@ public class MeshSlicerEditor : Editor
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Physics Settings", EditorStyles.boldLabel);
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("addMeshCollider"), new GUIContent("Add Box Collider"));
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("addRigidbody"), new GUIContent("Add Rigidbody"));
+    
+        SerializedProperty colliderTypeProp = serializedObject.FindProperty("colliderType");
+        EditorGUILayout.PropertyField(colliderTypeProp);
+
+        // 콜라이더가 None이 아닐 때만 스케일과 리지드바디 옵션을 보여줌
+        if (colliderTypeProp.enumValueIndex != (int)ChunkColliderType.None)
+        {
+            // MeshCollider는 스케일 조절이 불가능하므로 Box나 Sphere일 때만 스케일 슬라이더 노출
+            if (colliderTypeProp.enumValueIndex != (int)ChunkColliderType.MeshCollider)
+            {
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("colliderScale"));
+            }
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("addRigidbody"));
+        }
 
         // 2. 하이라키(자식 메쉬) 세팅 렌더링
         EditorGUILayout.Space();

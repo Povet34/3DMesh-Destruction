@@ -21,6 +21,14 @@ public enum SliceMethod
     Splinter     // 나뭇결 (길쭉한 파괴)
 }
 
+public enum ChunkColliderType
+{
+    None,
+    Box,
+    Sphere,
+    MeshCollider
+}
+
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public partial class MeshSlicer : MonoBehaviour
 {
@@ -30,6 +38,16 @@ public partial class MeshSlicer : MonoBehaviour
     [Tooltip("모든 자식 메쉬의 파편 개수를 일괄 조절하는 글로벌 배율")]
     [Range(0.1f, 5f)] 
     public float globalSliceRatio = 1.0f;
+    
+    [Header("Physics Settings")]
+    public ChunkColliderType colliderType = ChunkColliderType.Box;
+    
+    [Tooltip("콜라이더의 크기 비율. 1보다 작게(예: 0.8) 설정해야 파편끼리 겹쳐서 폭발하는 현상을 막을 수 있음.")]
+    [Range(0.1f, 1.0f)]
+    public float colliderScale = 0.8f; // AABB를 축소시킬 비율
+    
+    public bool addMeshCollider = true;
+    public bool addRigidbody = true;
     
     // Single Plane
     public Vector3 planePosition = Vector3.zero;
@@ -52,10 +70,6 @@ public partial class MeshSlicer : MonoBehaviour
 
     // Splinter Settings
     [Range(0f, 1f)] public float splinterSpread = 0.2f;
-
-    [Header("Physics Settings")]
-    public bool addMeshCollider = true;
-    public bool addRigidbody = true;
 
     // --- 새로 추가된 자식 메쉬 리스트 ---
     [Header("Hierarchy Settings")]
@@ -214,7 +228,7 @@ public partial class MeshSlicer : MonoBehaviour
         return hasIntersection;
     }
 
-    public void CreateSlicedObject(string name, MeshData data)
+    void CreateSlicedObject(string name, MeshData data)
     {
         if (data.vertices.Count == 0) return;
 

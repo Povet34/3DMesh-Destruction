@@ -174,8 +174,6 @@ public partial class MeshSlicer : MonoBehaviour
         go.transform.position = originalFilter.transform.position;
         go.transform.rotation = originalFilter.transform.rotation;
         go.transform.localScale = originalFilter.transform.localScale;
-    
-        // 수정됨: 파편을 원본 자식의 부모가 아니라, MeshSlicer(최상위 루트)의 부모와 동일한 계층으로 빼냄
         go.transform.SetParent(this.transform.parent);
 
         MeshFilter filter = go.AddComponent<MeshFilter>();
@@ -185,11 +183,29 @@ public partial class MeshSlicer : MonoBehaviour
         Mesh mesh = data.ToMesh();
         filter.sharedMesh = mesh;
 
-        if (addMeshCollider)
+        switch (colliderType)
         {
-            BoxCollider boxCollider = go.AddComponent<BoxCollider>();
-            boxCollider.center = mesh.bounds.center;
-            boxCollider.size = mesh.bounds.size;
+            case ChunkColliderType.Box:
+                BoxCollider box = go.AddComponent<BoxCollider>();
+                box.center = mesh.bounds.center;
+                // bounds.size에 colliderScale을 곱하여 AABB의 크기를 최소한으로 줄임
+                box.size = mesh.bounds.size * colliderScale;
+                break;
+
+            case ChunkColliderType.Sphere:
+                SphereCollider sphere = go.AddComponent<SphereCollider>();
+                sphere.center = mesh.bounds.center;
+                // X, Y, Z 중 가장 긴 축을 기준으로 반지름을 구하고 스케일을 곱함
+                float maxExtent = Mathf.Max(mesh.bounds.extents.x, mesh.bounds.extents.y, mesh.bounds.extents.z);
+                sphere.radius = maxExtent * colliderScale;
+                break;
+
+            case ChunkColliderType.MeshCollider:
+                MeshCollider mc = go.AddComponent<MeshCollider>();
+                mc.sharedMesh = mesh;
+                mc.convex = true;
+                // MeshCollider는 메쉬 버텍스를 그대로 쓰므로 colliderScale 적용이 불가능함
+                break;
         }
 
         if (addRigidbody)

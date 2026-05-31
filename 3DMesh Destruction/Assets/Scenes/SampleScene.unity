@@ -468,6 +468,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MeshSlicer
   sliceMethod: 4
   globalSliceRatio: 1
+  colliderType: 1
+  colliderScale: 0.8
+  addMeshCollider: 1
+  addRigidbody: 1
   planePosition: {x: 0, y: 0, z: 0}
   planeRotation: {x: 0, y: 0, z: 0, w: 1}
   planeSize: {x: 2, y: 2}
@@ -480,8 +484,6 @@ MonoBehaviour:
   seedsPerCluster: 4
   clusterRadius: 0.5
   splinterSpread: 0.2
-  addMeshCollider: 1
-  addRigidbody: 1
   childSettings: []
 --- !u!1 &832575517
 GameObject:
@@ -678,6 +680,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MeshSlicer
   sliceMethod: 4
   globalSliceRatio: 1
+  colliderType: 1
+  colliderScale: 0.8
+  addMeshCollider: 1
+  addRigidbody: 1
   planePosition: {x: 0, y: 0, z: 0}
   planeRotation: {x: 0, y: 0, z: 0, w: 1}
   planeSize: {x: 2, y: 2}
@@ -690,8 +696,6 @@ MonoBehaviour:
   seedsPerCluster: 4
   clusterRadius: 0.5
   splinterSpread: 0.2
-  addMeshCollider: 1
-  addRigidbody: 1
   childSettings: []
 --- !u!136 &896202194
 CapsuleCollider:
@@ -868,7 +872,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1978907248868392, guid: 2c4daa6156d4958468b11564deb735b6, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4573813148344192, guid: 2c4daa6156d4958468b11564deb735b6, type: 3}
       propertyPath: m_LocalPosition.x
@@ -910,6 +914,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 64682521301277846, guid: 2c4daa6156d4958468b11564deb735b6, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -941,11 +949,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MeshSlicer
   sliceMethod: 2
-  globalSliceRatio: 1
+  globalSliceRatio: 0.66
+  colliderType: 3
+  colliderScale: 0.8
+  addMeshCollider: 1
+  addRigidbody: 1
   planePosition: {x: 0, y: 0, z: 0}
   planeRotation: {x: 0, y: 0, z: 0, w: 1}
   planeSize: {x: 2, y: 2}
-  voronoiSeedCount: 26
+  voronoiSeedCount: 10
   randomSeed: 12345
   impactPoint: {x: 0, y: 0, z: 0}
   radialRings: 3
@@ -954,8 +966,6 @@ MonoBehaviour:
   seedsPerCluster: 4
   clusterRadius: 0.5
   splinterSpread: 0.2
-  addMeshCollider: 1
-  addRigidbody: 1
   childSettings:
   - targetFilter: {fileID: 1360752503}
     enableSlice: 1
@@ -1210,6 +1220,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MeshSlicer
   sliceMethod: 3
   globalSliceRatio: 1
+  colliderType: 1
+  colliderScale: 0.8
+  addMeshCollider: 1
+  addRigidbody: 1
   planePosition: {x: 0, y: 0, z: 0}
   planeRotation: {x: 0, y: 0, z: 0, w: 1}
   planeSize: {x: 2, y: 2}
@@ -1222,8 +1236,6 @@ MonoBehaviour:
   seedsPerCluster: 4
   clusterRadius: 0.5
   splinterSpread: 0.2
-  addMeshCollider: 1
-  addRigidbody: 1
   childSettings: []
 --- !u!1001 &2097556067
 PrefabInstance:
