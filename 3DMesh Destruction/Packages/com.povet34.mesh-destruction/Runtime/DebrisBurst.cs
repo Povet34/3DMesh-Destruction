@@ -63,7 +63,8 @@ namespace Povet.MeshDestruction
 
         private void Start()
         {
-            if (burstOnStart) Burst();
+            // FracturedSwap 등이 이미 Burst를 호출했으면 다시 터뜨리지 않음
+            if (burstOnStart && !_burst) Burst();
         }
 
         // 자식 Renderer들을 파편으로 등록하고 원래 로컬 포즈를 기억함
@@ -89,6 +90,7 @@ namespace Povet.MeshDestruction
             }
         }
 
+        [ContextMenu("Burst")]
         public void Burst() => Burst(transform.position);
 
         // explosionCenter는 월드 좌표. 파편은 중심에서 바깥 방향으로 날아감.
@@ -117,6 +119,7 @@ namespace Povet.MeshDestruction
         }
 
         // 파편을 원래 로컬 포즈로 되돌리고 시뮬레이션 중지
+        [ContextMenu("Restore")]
         public void Restore()
         {
             _burst = false;

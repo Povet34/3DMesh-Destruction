@@ -150,6 +150,11 @@ namespace Povet.MeshDestruction
             {
                 DebrisBurst debris = container.AddComponent<DebrisBurst>();
                 debris.settings = debrisBurstSettings.Clone();
+
+                // 플레이 중 슬라이스는 "지금 부순다"는 뜻이므로 즉시 버스트.
+                // 에디터(베이크) 슬라이스는 터뜨리지 않고 프리팹 저장용으로 놔둠.
+                if (Application.isPlaying)
+                    debris.Burst(transform.position);
             }
 
             // 모든 자식의 파괴가 끝난 후, 최상위 원본 오브젝트 자체를 비활성화함
