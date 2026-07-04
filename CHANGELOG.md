@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1] - 2026-07-04
+
+### Fixed
+- DebrisBurst pieces stayed still when slicing directly (nothing called `Burst()`).
+  - Slicing in Play mode with `physicsMode = DebrisBurst` now bursts immediately.
+  - `DebrisBurst` inspector gains Burst / Restore buttons (Play mode) and context menu entries.
+  - `burstOnStart` no longer double-bursts when `FracturedSwap` already triggered the explosion.
+
 ## [1.1.0] - 2026-07-04
 
 ### Added
