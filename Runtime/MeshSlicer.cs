@@ -31,6 +31,13 @@ namespace Povet.MeshDestruction
         MeshCollider
     }
 
+    public enum ChunkPhysicsMode
+    {
+        Rigidbody,   // 물리엔진 (파편마다 콜라이더 + 리지드바디)
+        DebrisBurst, // 트랜스폼 적분 (콜라이더 없음, 논리적 바닥 평면) — 컨테이너에 DebrisBurst 부착
+        None         // 물리 없음 (연출을 직접 구현할 때)
+    }
+
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
     public partial class MeshSlicer : MonoBehaviour
     {
@@ -42,6 +49,12 @@ namespace Povet.MeshDestruction
         public float globalSliceRatio = 1.0f;
 
         [Header("Physics Settings")]
+        [Tooltip("파편 구동 방식. Rigidbody는 물리엔진, DebrisBurst는 콜라이더 없이 트랜스폼 적분")]
+        public ChunkPhysicsMode physicsMode = ChunkPhysicsMode.Rigidbody;
+
+        [Tooltip("DebrisBurst 모드에서 파편 컨테이너의 DebrisBurst 컴포넌트로 복사될 세팅")]
+        public DebrisBurstSettings debrisBurstSettings = new DebrisBurstSettings();
+
         public ChunkColliderType colliderType = ChunkColliderType.Box;
 
         [Tooltip("콜라이더의 크기 비율. 1보다 작게(예: 0.8) 설정해야 파편끼리 겹쳐서 폭발하는 현상을 막을 수 있음.")]
@@ -130,6 +143,14 @@ namespace Povet.MeshDestruction
             }
 
             chunkParent = null;
+
+            // DebrisBurst 모드: 파편 컨테이너에 컴포넌트를 붙이고 슬라이서의 세팅을 복사.
+            // 프리팹으로 저장하면 세팅까지 같이 구워짐.
+            if (physicsMode == ChunkPhysicsMode.DebrisBurst)
+            {
+                DebrisBurst debris = container.AddComponent<DebrisBurst>();
+                debris.settings = debrisBurstSettings.Clone();
+            }
 
             // 모든 자식의 파괴가 끝난 후, 최상위 원본 오브젝트 자체를 비활성화함
             gameObject.SetActive(false);

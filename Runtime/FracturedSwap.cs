@@ -34,8 +34,17 @@ namespace Povet.MeshDestruction
             // 파편 프리팹은 원본과 동일한 포즈로 구워졌으므로, 현재 포즈에 그대로 인스턴스화하면 이어짐
             GameObject instance = Instantiate(fracturedPrefab, transform.position, transform.rotation, transform.parent);
 
-            foreach (Rigidbody rb in instance.GetComponentsInChildren<Rigidbody>())
-                rb.AddExplosionForce(explosionForce, explosionCenter, explosionRadius, upwardsModifier);
+            // DebrisBurst로 구운 프리팹이면 트랜스폼 적분 버스트, 아니면 리지드바디 폭발
+            DebrisBurst debris = instance.GetComponent<DebrisBurst>();
+            if (debris != null)
+            {
+                debris.Burst(explosionCenter);
+            }
+            else
+            {
+                foreach (Rigidbody rb in instance.GetComponentsInChildren<Rigidbody>())
+                    rb.AddExplosionForce(explosionForce, explosionCenter, explosionRadius, upwardsModifier);
+            }
 
             if (chunkLifetime > 0f)
                 Destroy(instance, chunkLifetime);

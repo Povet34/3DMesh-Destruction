@@ -187,18 +187,33 @@ namespace Povet.MeshDestruction.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Physics Settings", EditorStyles.boldLabel);
 
-            SerializedProperty colliderTypeProp = serializedObject.FindProperty("colliderType");
-            EditorGUILayout.PropertyField(colliderTypeProp);
+            SerializedProperty physicsModeProp = serializedObject.FindProperty("physicsMode");
+            EditorGUILayout.PropertyField(physicsModeProp);
+            ChunkPhysicsMode physicsMode = (ChunkPhysicsMode)physicsModeProp.enumValueIndex;
 
-            // 콜라이더가 None이 아닐 때만 스케일과 리지드바디 옵션을 보여줌
-            if (colliderTypeProp.enumValueIndex != (int)ChunkColliderType.None)
+            if (physicsMode == ChunkPhysicsMode.Rigidbody)
             {
-                // MeshCollider는 스케일 조절이 불가능하므로 Box나 Sphere일 때만 스케일 슬라이더 노출
-                if (colliderTypeProp.enumValueIndex != (int)ChunkColliderType.MeshCollider)
+                SerializedProperty colliderTypeProp = serializedObject.FindProperty("colliderType");
+                EditorGUILayout.PropertyField(colliderTypeProp);
+
+                // 콜라이더가 None이 아닐 때만 스케일과 리지드바디 옵션을 보여줌
+                if (colliderTypeProp.enumValueIndex != (int)ChunkColliderType.None)
                 {
-                    EditorGUILayout.PropertyField(serializedObject.FindProperty("colliderScale"));
+                    // MeshCollider는 스케일 조절이 불가능하므로 Box나 Sphere일 때만 스케일 슬라이더 노출
+                    if (colliderTypeProp.enumValueIndex != (int)ChunkColliderType.MeshCollider)
+                    {
+                        EditorGUILayout.PropertyField(serializedObject.FindProperty("colliderScale"));
+                    }
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("addRigidbody"));
                 }
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("addRigidbody"));
+            }
+            else if (physicsMode == ChunkPhysicsMode.DebrisBurst)
+            {
+                EditorGUILayout.HelpBox(
+                    "파편에 콜라이더/리지드바디를 붙이지 않고, 파편 컨테이너에 DebrisBurst 컴포넌트가 부착됨.\n" +
+                    "아래 세팅이 그 컴포넌트로 복사되며, 베이크 후 컨테이너에서 직접 수정해도 됨.",
+                    MessageType.Info);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("debrisBurstSettings"), true);
             }
 
             // 2. 하이라키(자식 메쉬) 세팅 렌더링
