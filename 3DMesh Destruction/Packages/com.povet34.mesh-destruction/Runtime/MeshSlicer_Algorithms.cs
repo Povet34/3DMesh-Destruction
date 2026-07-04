@@ -185,6 +185,10 @@ namespace Povet.MeshDestruction
             Mesh mesh = data.ToMesh();
             filter.sharedMesh = mesh;
 
+            // Rigidbody 모드가 아니면 물리 컴포넌트를 붙이지 않음
+            // (DebrisBurst 모드는 컨테이너의 DebrisBurst가 트랜스폼 적분으로 구동)
+            if (physicsMode != ChunkPhysicsMode.Rigidbody) return;
+
             switch (colliderType)
             {
                 case ChunkColliderType.Box:

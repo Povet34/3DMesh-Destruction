@@ -6,6 +6,7 @@ Mesh slicing & fracturing toolkit for Unity.
 - **Non-convex cap filling**: cut cross-sections are reconstructed as closed loops and triangulated with ear clipping — meshes with holes (rings, torus-like shapes) are cut correctly without giant spanning triangles
 - **Prefab baking**: fracture once in the editor, save all chunk meshes + prefab to `Assets/FracturedCache/`, and reuse at runtime
 - **Runtime swap**: `FracturedSwap` component swaps the intact model for the pre-baked fractured prefab and applies explosion force
+- **Two physics modes**: full `Rigidbody` physics per chunk, or `DebrisBurst` — collider-free transform integration with a logical ground plane (bounce + friction), near-zero physics cost
 
 ## Installation (UPM)
 
@@ -47,7 +48,23 @@ swap.explosionForce = 400f;
 swap.Explode(hitPoint); // original is disabled, chunks fly
 ```
 
-### 3. Slice purely in code
+### 3. Collider-free debris (DebrisBurst)
+
+Set `Physics Mode` to **DebrisBurst** on the `MeshSlicer` before baking — chunks get no colliders or rigidbodies, and the fractured container gets a `DebrisBurst` component with the settings you configured on the slicer. `FracturedSwap.Explode()` detects it automatically.
+
+`DebrisBurst` also works standalone — add it to any object whose children have Renderers and call `Burst()`:
+
+```csharp
+using Povet.MeshDestruction;
+
+var debris = fracturedRoot.AddComponent<DebrisBurst>();
+debris.settings.impulse = 8f;
+debris.settings.useGroundPlane = true;  // logical floor: pieces bounce, no colliders involved
+debris.settings.bounciness = 0.4f;
+debris.Burst(explosionCenter);
+```
+
+### 4. Slice purely in code
 
 ```csharp
 using Povet.MeshDestruction;

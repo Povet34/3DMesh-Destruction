@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.0] - 2026-07-04
+
+### Added
+- `DebrisBurst` component: collider/rigidbody-free debris simulation via transform integration.
+  Radial impulse + random spread + upward bias, gravity, per-piece spin, and a logical ground plane
+  with bounciness and friction. Optional lifetime with shrink-out. Works standalone via `Burst()`.
+- `MeshSlicer.physicsMode` (`Rigidbody` / `DebrisBurst` / `None`): in `DebrisBurst` mode chunks are
+  baked without physics components and the fractured container gets a configured `DebrisBurst`.
+- `FracturedSwap.Explode()` auto-detects `DebrisBurst` on the instantiated prefab and calls
+  `Burst(explosionCenter)` instead of applying rigidbody explosion forces.
+
 ## [1.0.1] - 2026-07-04
 
 ### Fixed
