@@ -1,0 +1,27 @@
+{
+  "name": "com.povet34.mesh-destruction",
+  "version": "1.0.0",
+  "displayName": "3D Mesh Destruction",
+  "description": "Mesh slicing & fracturing toolkit. Voronoi / radial / clustered / splinter fracture patterns, non-convex cap filling (loop reconstruction + ear clipping), fractured-prefab baking for caching, and runtime swap-on-explosion.",
+  "unity": "2021.3",
+  "author": {
+    "name": "Jaesang Lim",
+    "email": "povet34@gmail.com",
+    "url": "https://github.com/Povet34"
+  },
+  "keywords": [
+    "mesh",
+    "destruction",
+    "fracture",
+    "slicing",
+    "voronoi",
+    "explosion"
+  ],
+  "samples": [
+    {
+      "displayName": "Basic Destruction",
+      "description": "Demo scene with a pre-baked fractured wall. Click to explode.",
+      "path": "Samples~/BasicDestruction"
+    }
+  ]
+}
