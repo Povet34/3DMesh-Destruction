@@ -1,6 +1,6 @@
 {
   "name": "com.povet34.mesh-destruction",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "displayName": "3D Mesh Destruction",
   "description": "Mesh slicing & fracturing toolkit. Voronoi / radial / clustered / splinter fracture patterns, non-convex cap filling (loop reconstruction + ear clipping), fractured-prefab baking for caching, and runtime swap-on-explosion.",
   "unity": "2021.3",

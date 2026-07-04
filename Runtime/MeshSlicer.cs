@@ -234,44 +234,116 @@ namespace Povet.MeshDestruction
             List<List<Vector3>> loops = BuildCapLoops(capSegments);
             if (loops.Count == 0) return;
 
-            // 평면 위 2D 좌표계 기저
+            // 평면 위 2D 좌표계 기저. (u,v,n)이 오른손 기저가 되어 (u,v)에서 CCW인 삼각형이 +n을 바라봄
             Vector3 n = plane.normal;
             Vector3 axis = Mathf.Abs(n.y) < 0.99f ? Vector3.up : Vector3.right;
             Vector3 u = Vector3.Cross(n, axis).normalized;
             Vector3 v = Vector3.Cross(n, u);
 
-            foreach (List<Vector3> loop in loops)
+            foreach (List<Vector3> rawLoop in loops)
             {
-                if (loop.Count < 3) continue;
+                if (rawLoop.Count < 3) continue;
 
-                List<Vector2> polygon = new List<Vector2>(loop.Count);
-                foreach (Vector3 p in loop)
-                    polygon.Add(new Vector2(Vector3.Dot(p, u), Vector3.Dot(p, v)));
-
-                List<int> tris = TriangulatePolygon(polygon);
-
-                for (int i = 0; i < tris.Count; i += 3)
+                // 2D 투영 + 루프 스케일 산출
+                float scale = 0f;
+                Vector2 first = new Vector2(Vector3.Dot(rawLoop[0], u), Vector3.Dot(rawLoop[0], v));
+                foreach (Vector3 p in rawLoop)
                 {
-                    Vector3 a = loop[tris[i]];
-                    Vector3 b = loop[tris[i + 1]];
-                    Vector3 c = loop[tris[i + 2]];
+                    Vector2 q = new Vector2(Vector3.Dot(p, u), Vector3.Dot(p, v));
+                    scale = Mathf.Max(scale, (q - first).sqrMagnitude);
+                }
+                scale = Mathf.Sqrt(scale);
+                if (scale <= 0f) continue;
+                float weldSqr = scale * scale * 1e-10f;
 
-                    // (a,b,c)가 +normal 방향을 바라보도록 정렬
-                    if (Vector3.Dot(Vector3.Cross(b - a, c - a), n) < 0f)
-                    {
-                        Vector3 tmp = b; b = c; c = tmp;
-                    }
+                // 근접 중복점 정리 (슬리버 삼각화의 원인이 됨)
+                List<Vector3> pts = new List<Vector3>(rawLoop.Count);
+                List<Vector2> poly = new List<Vector2>(rawLoop.Count);
+                foreach (Vector3 p in rawLoop)
+                {
+                    Vector2 q = new Vector2(Vector3.Dot(p, u), Vector3.Dot(p, v));
+                    if (poly.Count > 0 && (q - poly[poly.Count - 1]).sqrMagnitude < weldSqr) continue;
+                    poly.Add(q);
+                    pts.Add(p);
+                }
+                while (poly.Count > 1 && (poly[0] - poly[poly.Count - 1]).sqrMagnitude < weldSqr)
+                {
+                    poly.RemoveAt(poly.Count - 1);
+                    pts.RemoveAt(pts.Count - 1);
+                }
+                if (poly.Count < 3) continue;
 
+                // 루프 단위로 CCW 정규화. 삼각형별 외적 판정은 슬리버에서 부호가 노이즈로 뒤집혀
+                // 뒷면 컬링 줄무늬를 만들므로 반드시 루프 단위로 한 번만 결정해야 함.
+                float signedArea = 0f;
+                for (int i = 0; i < poly.Count; i++)
+                {
+                    Vector2 p2 = poly[i];
+                    Vector2 q2 = poly[(i + 1) % poly.Count];
+                    signedArea += p2.x * q2.y - q2.x * p2.y;
+                }
+                if (Mathf.Abs(signedArea) < scale * scale * 1e-8f) continue; // 면적 없는 퇴화 루프
+                if (signedArea < 0f)
+                {
+                    poly.Reverse();
+                    pts.Reverse();
+                }
+
+                void Emit(Vector3 a, Vector3 b, Vector3 c)
+                {
                     negativeMesh.AddTriangle(a, b, c, n, n, n, Vector2.zero, Vector2.zero, Vector2.zero);
                     positiveMesh.AddTriangle(a, c, b, -n, -n, -n, Vector2.zero, Vector2.zero, Vector2.zero);
                 }
+
+                if (IsConvexPolygon(poly, scale))
+                {
+                    // 볼록 루프(구/원기둥의 원형 단면 등)는 센트로이드 팬으로 균등하게 삼각화.
+                    // 이어클리핑을 쓰면 한 꼭짓점 주변으로 슬리버가 몰려 이후 재절단에서 캡이 깨짐.
+                    Vector3 centroid = Vector3.zero;
+                    foreach (Vector3 p in pts) centroid += p;
+                    centroid /= pts.Count;
+
+                    for (int i = 0; i < pts.Count; i++)
+                        Emit(centroid, pts[i], pts[(i + 1) % pts.Count]);
+                }
+                else
+                {
+                    List<int> tris = TriangulatePolygon(poly);
+                    for (int i = 0; i < tris.Count; i += 3)
+                        Emit(pts[tris[i]], pts[tris[i + 1]], pts[tris[i + 2]]);
+                }
             }
+        }
+
+        private static bool IsConvexPolygon(List<Vector2> poly, float scale)
+        {
+            float eps = -scale * scale * 1e-9f; // 미세한 음수는 수치 노이즈로 허용
+            for (int i = 0; i < poly.Count; i++)
+            {
+                Vector2 a = poly[i];
+                Vector2 b = poly[(i + 1) % poly.Count];
+                Vector2 c = poly[(i + 2) % poly.Count];
+                if ((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) < eps)
+                    return false;
+            }
+            return true;
         }
 
         // capSegments는 [시작, 끝] 쌍의 나열. 끝점이 일치하는 세그먼트끼리 이어 닫힌 루프들을 복원함.
         internal static List<List<Vector3>> BuildCapLoops(List<Vector3> capSegments)
         {
-            const float weldDistance = 1e-4f;
+            if (capSegments.Count < 2) return new List<List<Vector3>>();
+
+            // 용접 거리는 반드시 스케일 비례여야 함. 절대값이면 작은 메쉬에서 루프가 뭉개지고
+            // 큰 메쉬에서 끝점이 안 붙어 루프가 끊김.
+            Vector3 bmin = capSegments[0], bmax = capSegments[0];
+            foreach (Vector3 p in capSegments)
+            {
+                bmin = Vector3.Min(bmin, p);
+                bmax = Vector3.Max(bmax, p);
+            }
+            float weldDistance = Mathf.Max((bmax - bmin).magnitude * 1e-5f, 1e-7f);
+
             List<Vector3> points = new List<Vector3>();
             Dictionary<Vector3Int, int> lookup = new Dictionary<Vector3Int, int>();
 
@@ -329,28 +401,37 @@ namespace Povet.MeshDestruction
 
                     List<Vector3> loop = new List<Vector3> { points[start] };
                     usedEdges.Add(EdgeKey(start, firstNext));
+                    int prev = start;
                     int current = firstNext;
                     int safety = points.Count + 2;
 
                     while (current != start && safety-- > 0)
                     {
                         loop.Add(points[current]);
+
+                        // 분기점(에지 3개 이상)에서는 진행 방향과 가장 직선에 가까운 에지를 선택.
+                        // 아무거나 잡으면 루프가 8자로 꼬여 캡이 뒤집힘.
+                        Vector3 inDir = (points[current] - points[prev]).normalized;
                         int next = -1;
+                        float bestScore = float.NegativeInfinity;
                         foreach (int cand in adjacency[current])
                         {
-                            if (!usedEdges.Contains(EdgeKey(current, cand)))
+                            if (usedEdges.Contains(EdgeKey(current, cand))) continue;
+                            float score = Vector3.Dot(inDir, (points[cand] - points[current]).normalized);
+                            if (score > bestScore)
                             {
+                                bestScore = score;
                                 next = cand;
-                                break;
                             }
                         }
                         if (next == -1) break;
                         usedEdges.Add(EdgeKey(current, next));
+                        prev = current;
                         current = next;
                     }
 
-                    // 닫히지 못한 열린 체인은 버림 (거대 삼각형을 만드느니 구멍이 나음)
-                    if (current == start && loop.Count >= 3)
+                    // 수치 오차로 못 닫힌 체인도 3점 이상이면 닫아서 사용 (버리면 캡에 구멍이 남)
+                    if (loop.Count >= 3)
                         loops.Add(loop);
                 }
             }
@@ -359,11 +440,23 @@ namespace Povet.MeshDestruction
         }
 
         // 이어클리핑(ear clipping) 기반 단순 다각형 삼각화. 오목 다각형도 처리 가능.
+        // 커서를 회전시키며 귀를 잘라냄 — 항상 첫 귀부터 자르면 한 꼭짓점 주변으로
+        // 슬리버 삼각형이 몰려서 이후 재절단 시 수치 오차의 원인이 됨.
         internal static List<int> TriangulatePolygon(List<Vector2> polygon)
         {
             List<int> result = new List<int>();
             int n = polygon.Count;
             if (n < 3) return result;
+
+            // 스케일 비례 오차 한계
+            Vector2 pmin = polygon[0], pmax = polygon[0];
+            foreach (Vector2 p in polygon)
+            {
+                pmin = Vector2.Min(pmin, p);
+                pmax = Vector2.Max(pmax, p);
+            }
+            float scale = (pmax - pmin).magnitude;
+            float epsCross = scale * scale * 1e-9f;
 
             // CCW로 정규화
             float area = 0f;
@@ -380,37 +473,11 @@ namespace Povet.MeshDestruction
             else
                 for (int i = n - 1; i >= 0; i--) indices.Add(i);
 
-            int guard = n * n + 8;
-            while (indices.Count > 3 && guard-- > 0)
+            int cursor = 0;
+            int sinceLastClip = 0;
+            while (indices.Count > 3)
             {
-                bool earFound = false;
-                for (int i = 0; i < indices.Count; i++)
-                {
-                    int i0 = indices[(i + indices.Count - 1) % indices.Count];
-                    int i1 = indices[i];
-                    int i2 = indices[(i + 1) % indices.Count];
-
-                    Vector2 a = polygon[i0], b = polygon[i1], c = polygon[i2];
-                    if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 0f)
-                        continue; // 오목하거나 퇴화된 꼭짓점
-
-                    bool containsOther = false;
-                    foreach (int j in indices)
-                    {
-                        if (j == i0 || j == i1 || j == i2) continue;
-                        if (PointInTriangle(polygon[j], a, b, c)) { containsOther = true; break; }
-                    }
-                    if (containsOther) continue;
-
-                    result.Add(i0);
-                    result.Add(i1);
-                    result.Add(i2);
-                    indices.RemoveAt(i);
-                    earFound = true;
-                    break;
-                }
-
-                if (!earFound)
+                if (sinceLastClip > indices.Count)
                 {
                     // 수치 오차로 귀를 못 찾으면 남은 부분을 부채꼴로 마감
                     for (int i = 1; i + 1 < indices.Count; i++)
@@ -420,6 +487,38 @@ namespace Povet.MeshDestruction
                         result.Add(indices[i + 1]);
                     }
                     indices.Clear();
+                    break;
+                }
+
+                cursor %= indices.Count;
+                int i0 = indices[(cursor + indices.Count - 1) % indices.Count];
+                int i1 = indices[cursor];
+                int i2 = indices[(cursor + 1) % indices.Count];
+
+                Vector2 a = polygon[i0], b = polygon[i1], c = polygon[i2];
+                bool isEar = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) > epsCross;
+                if (isEar)
+                {
+                    foreach (int j in indices)
+                    {
+                        if (j == i0 || j == i1 || j == i2) continue;
+                        if (PointInTriangle(polygon[j], a, b, c)) { isEar = false; break; }
+                    }
+                }
+
+                if (isEar)
+                {
+                    result.Add(i0);
+                    result.Add(i1);
+                    result.Add(i2);
+                    indices.RemoveAt(cursor);
+                    sinceLastClip = 0;
+                    cursor++; // 다음 위치로 전진 (같은 자리에서 연속으로 자르면 팬이 됨)
+                }
+                else
+                {
+                    cursor++;
+                    sinceLastClip++;
                 }
             }
 
